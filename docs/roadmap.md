@@ -1,4 +1,4 @@
-# 🗺️ LLM API Gateway — 수정 로드맵 (Phase 2~4)
+# 🗺️ LLM API Gateway — 수정 로드맵 (Phase 2~6)
 
 > **Phase 1(Step 1~5) 완료 기준으로 작성됨.** (2026-03-27)  
 > 이전 분석 보고서(`phase_analysis_report.md`)의 보완점을 반영한 최종 로드맵입니다.
@@ -153,16 +153,106 @@ logger.py → 비동기 로깅
 
 ---
 
-## Phase 5 (선택/심화): MLOps 자동화
+## Phase 5 (Deep Dive): 전기전자 전공 연계 — 메모리 아키텍처 심화
+
+> 전기전자공학 전공 지식을 소프트웨어 인프라에 녹여내는 구간입니다.  
+> 하드웨어에서 배운 메모리 계층 구조와 캐시 설계 원리를 실제 프로덕션 시스템에 적용합니다.
+
+### Step 14: 캐시 메모리 계층 분석 엔진
+- **개념**: CPU의 **L1/L2/L3 캐시 계층**과 동일한 원리를 Gateway의 데이터 계층(Python dict → Redis → PostgreSQL)에 적용하고, 이를 **정량적으로 분석·시각화**합니다.
+- **전기전자 이론 연결**:
+  ```
+  [하드웨어 캐시]              [Gateway 캐시]
+  L1 (SRAM, ~1ns)        ↔    Python dict (in-process)
+  L2/L3 (SRAM, ~10ns)    ↔    Redis (인메모리 DB, ~1ms)
+  Main Memory (DRAM)     ↔    PostgreSQL (디스크 DB, ~10ms)
+  Storage (SSD)          ↔    Object Storage / 파일 로그
+  ```
+- **생성할 파일**:
+  - `cache.py` (수정) — **다계층 캐시 아키텍처** 구현 (L1: 로컬 dict → L2: Redis → L3: DB)
+  - `cache_monitor.py` — 캐시 성능 메트릭 수집기
+  - `dashboard/pages/cache.py` — 캐시 분석 대시보드 페이지
+- **수집할 메트릭 (하드웨어 캐시 분석과 동일)**:
+  ```
+  hit_rate        → 캐시 적중률 (L1/L2 각각)
+  miss_rate       → 캐시 미스율
+  eviction_count  → 교체(퇴거)된 엔트리 수
+  avg_access_time → 계층별 평균 접근 시간
+  memory_usage    → 계층별 메모리 사용량
+  ```
+- **구현할 캐시 교체 정책 (전기전자 전공 직결)**:
+  - **LRU (Least Recently Used)** — 가장 오래 사용하지 않은 항목 교체
+  - **LFU (Least Frequently Used)** — 가장 적게 사용된 항목 교체
+  - **TTL 기반** — 하드웨어의 캐시 라인 무효화(Cache Invalidation)와 동일 개념
+  - 정책별 히트율 비교 차트를 대시보드에 표시
+- **핵심 학습 포인트**:
+  - 하드웨어 캐시 설계 원리가 소프트웨어에서 그대로 적용되는 과정 체험
+  - 캐시 크기(Capacity) vs 히트율의 트레이드오프 분석
+  - Write-through vs Write-back 전략 이해 (Redis 영속화)
+
+### Step 15: KV Cache 기반 메모리-어웨어 라우팅
+- **개념**: LLM의 Transformer 추론은 **CPU-bound가 아니라 Memory-bound**입니다. GPU의 **HBM(High Bandwidth Memory) 대역폭**이 추론 속도를 결정하며, 프롬프트 길이에 비례하여 **KV Cache**가 VRAM을 점유합니다. 이 하드웨어 제약을 Gateway 라우팅에 반영합니다.
+- **전기전자 이론 연결**:
+  ```
+  [메모리 대역폭 이론]                    [Gateway 적용]
+  DRAM Bandwidth (GB/s)            ↔    모델 서버별 처리 용량(QPS) 상한
+  KV Cache Size = O(n·d·L)         ↔    프롬프트 길이별 VRAM 점유량 예측
+    n: 시퀀스 길이
+    d: 임베딩 차원
+    L: 레이어 수
+  HBM vs GDDR6 대역폭 차이          ↔    GPU 종류별 최적 배치 크기(Batch Size)
+  메모리 컨트롤러 큐잉               ↔    요청 큐잉 + 배치 전략
+  ```
+- **Model Registry 확장** (`models.py` 수정):
+  ```
+  LLMModel 테이블에 추가할 컬럼:
+  + gpu_type (예: "A100-80GB", "H100-80GB")
+  + memory_bandwidth_gbps (예: 2039.0 for H100)
+  + vram_total_gb (예: 80)
+  + vram_available_gb (실시간 업데이트 가능)
+  + kv_cache_per_token_kb (모델별 토큰당 KV Cache 크기)
+  + max_concurrent_requests (메모리 기반 계산값)
+  ```
+- **생성할 파일**:
+  - `memory_router.py` — 메모리-어웨어 라우팅 엔진
+  - `memory_estimator.py` — 프롬프트 길이 기반 VRAM 사용량 예측기
+  - `dashboard/pages/memory.py` — GPU 메모리 모니터링 대시보드
+- **라우팅 판단 로직**:
+  ```python
+  # 1. 요청의 프롬프트 길이로 필요한 KV Cache 크기 예측
+  required_vram = estimate_kv_cache(prompt_length, model.kv_cache_per_token_kb)
+  
+  # 2. prod 모델 중 VRAM 여유가 충분한 모델만 후보로 필터링
+  candidates = [m for m in prod_models if m.vram_available_gb > required_vram]
+  
+  # 3. 후보 중 정책(비용/속도)에 따라 최적 모델 선택
+  selected = policy_engine.select(candidates, tenant.policy)
+  ```
+- **대시보드 시각화**:
+  ```
+  🧠 GPU Memory Map  → 모델별 VRAM 점유율 게이지 차트
+  📈 KV Cache 추이    → 시간대별 KV Cache 사용량 라인 차트
+  ⚡ Bandwidth 분석   → 모델 서버별 메모리 대역폭 활용률
+  ```
+- **핵심 학습 포인트**:
+  - Transformer의 KV Cache 메커니즘과 메모리 병목 이해
+  - GPU 하드웨어 스펙(HBM 대역폭, VRAM 용량)과 추론 성능의 관계
+  - 하드웨어 제약을 소프트웨어 라우팅 정책으로 추상화하는 설계
+
+> **💡 포트폴리오 차별화 포인트**: 이 Phase는 대부분의 소프트웨어 개발자가 구현하지 못하는 영역입니다. "전기전자 전공자이기 때문에 메모리 대역폭과 캐시 계층을 이해하고 이를 실제 시스템 설계에 반영했다"는 것은 면접에서 매우 강력한 어필 포인트가 됩니다.
+
+---
+
+## Phase 6 (선택/심화): MLOps 자동화
 
 > 여기부터는 **시간이 충분할 때** 추가하는 심화 기능입니다.  
-> Phase 4까지만 완성해도 **포트폴리오로서 충분히 강력합니다.**
+> Phase 4까지만 완성해도 포트폴리오로서 충분히 강력하고, Phase 5까지 하면 **전공 차별화까지 완성**됩니다.
 
-### Step 14: 자동 평가 파이프라인 (Auto-Eval)
+### Step 16: 자동 평가 파이프라인 (Auto-Eval)
 - 새 모델이 Registry에 `dev`로 등록되면 벤치마크 테스트셋을 자동 실행
 - 기존 `prod` 모델 대비 정확도/지연시간 비교 → 통과 시 `staging` 승격
 
-### Step 15: Shadow Traffic + Auto-Rollback
+### Step 17: Shadow Traffic + Auto-Rollback
 - `staging` 모델에 실제 트래픽의 일부를 미러링하여 안전하게 검증
 - `prod` 승격 후 에러율 급증 시 자동 이전 버전 복구
 
@@ -185,7 +275,7 @@ graph LR
     subgraph "Phase 3: Model Registry"
         S9["Step 9<br/>Registry 구축"]
         S10["Step 10<br/>멀티모델 라우팅"]
-        S11["Step 11<br/>정책 엔진 (선택)"]
+        S11["Step 11<br/>정책 엔진"]
     end
 
     subgraph "Phase 4: 대시보드"
@@ -193,15 +283,21 @@ graph LR
         S13["Step 13<br/>Streamlit Dashboard"]
     end
 
-    subgraph "Phase 5: 심화 (선택)"
-        S14["Step 14<br/>Auto-Eval"]
-        S15["Step 15<br/>Shadow Traffic"]
+    subgraph "Phase 5: Deep Dive (EE 전공)"
+        S14["Step 14<br/>캐시 메모리 계층 분석"]
+        S15["Step 15<br/>KV Cache 메모리 라우팅"]
+    end
+
+    subgraph "Phase 6: 심화 (선택)"
+        S16["Step 16<br/>Auto-Eval"]
+        S17["Step 17<br/>Shadow Traffic"]
     end
 
     S1 --> S6 --> S7 --> S8
     S8 --> S9 --> S10 --> S11
     S11 --> S12 --> S13
     S13 --> S14 --> S15
+    S15 --> S16 --> S17
 ```
 
 ### 예상 소요 기간 (하루 2~3시간 기준)
@@ -212,6 +308,8 @@ graph LR
 | Phase 3 | Step 9~10 | 약 1주 |
 | Phase 3 | Step 11 (선택) | 2~3일 |
 | Phase 4 | Step 12~13 | 약 1주 |
-| Phase 5 | Step 14~15 (선택) | 1~2주 |
+| **Phase 5 (Deep Dive)** | **Step 14~15** | **약 1~2주** |
+| Phase 6 | Step 16~17 (선택) | 1~2주 |
 
-> **Phase 4까지 최소 완성 목표: 약 3~4주**
+> **Phase 4까지 최소 완성 목표: 약 3~4주**  
+> **Phase 5(Deep Dive)까지 전공 차별화 목표: 약 5~6주**
