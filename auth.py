@@ -1,16 +1,20 @@
 # auth.py
 from fastapi import Header, HTTPException
+from rate_limit import check_rate_limit
 
 # 1. DB를 대체할 임시 키 리스트
 VALID_API_KEYS = {"sk-my-secret-key-1": "team-a", "sk-my-secret-key-2": "team-b"}
 
 
 # 2. 문지기(Dependency) 함수
+
+
 async def verify_api_key(x_api_key: str = Header(...)):
-    # 헤더로 들어온 값이 유효한 키인지 확인
     if x_api_key not in VALID_API_KEYS:
-        # 키가 없으면 401 에러 발생(즉시 응답 종료)
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    # 누군지(팀 이름) 리턴해주면 나중에 쓰기 편함
+    # 🔑 인증을 통과하자마자(올바른 사용자임) 무조건 Rate Limit을 검증한다!
+    # 여기서 Exception이 발생하면 라우터까지 안가고 바로 차단됨
+    check_rate_limit(x_api_key)
+
     return VALID_API_KEYS[x_api_key]
