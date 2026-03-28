@@ -1,20 +1,32 @@
-# auth.py
-from fastapi import Header, HTTPException
+# auth.py (수정 — Step 6: DB 기반 인증)
+from fastapi import Header, HTTPException, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from database import get_db
+from models import ApiKey
 from rate_limit import check_rate_limit
 
-# 1. DB를 대체할 임시 키 리스트
-VALID_API_KEYS = {"sk-my-secret-key-1": "team-a", "sk-my-secret-key-2": "team-b"}
 
+async def verify_api_key(
+    x_api_key: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1. DB에서 API Key 조회 (팀 정보도 함께 가져옴)
+    result = await db.execute(
+        select(ApiKey)
+        .options(selectinload(ApiKey.tenant))
+        .where(ApiKey.key == x_api_key, ApiKey.is_active == True)
+    )
+    api_key_row = result.scalar_one_or_none()
 
-# 2. 문지기(Dependency) 함수
-
-
-async def verify_api_key(x_api_key: str = Header(...)):
-    if x_api_key not in VALID_API_KEYS:
+    # 2. 키가 없거나 비활성화 상태면 401
+    if api_key_row is None:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    # 🔑 인증을 통과하자마자(올바른 사용자임) 무조건 Rate Limit을 검증한다!
-    # 여기서 Exception이 발생하면 라우터까지 안가고 바로 차단됨
+    # 3. Rate Limit 검증 (기존과 동일)
     check_rate_limit(x_api_key)
 
-    return VALID_API_KEYS[x_api_key]
+    # 4. 팀 이름을 반환 (기존에 딕셔너리에서 꺼내던 것과 동일한 역할)
+    return api_key_row.tenant.name
