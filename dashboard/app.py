@@ -4,6 +4,8 @@ import pandas as pd
 import httpx
 import asyncio
 
+from metrics import draw_cost_trend, draw_model_usage, draw_latency_dist
+
 # API 서버 주소 (main.py가 8005 포트에서 실행 중이면 맞춰야 함)
 API_BASE_URL = "http://localhost:8005/admin/stats"
 
@@ -42,7 +44,6 @@ async def load_dashboard_data():
 
 
 # 시각화 함수 (metrics.py는 여전히 DataFrame을 받도록 유지)
-from metrics import draw_cost_trend, draw_model_usage, draw_latency_dist
 
 # 메인 UI
 st.title("🚀 LLM API Gateway Monitor")
@@ -52,6 +53,50 @@ st.markdown(
 
 # 데이터 로딩 실행
 summary, df = asyncio.run(load_dashboard_data())
+
+st.sidebar.title("🛠️ Control Panel")
+demo_mode = st.sidebar.checkbox("Multi-Agent Offloading Demo", value=True)
+
+if demo_mode:
+    st.subheader("🤖 Multi-Agent Offloading Simulation")
+    st.info(
+        "복합 요청을 입력하면 시스템이 자원을 분석하여 Edge/Local/Cloud로 작업을 자동 배분합니다."
+    )
+
+    user_input = st.text_input(
+        "Complex Prompt를 입력하세요:", value="데이터 분석하고 요약해서 메일로 보내줘"
+    )
+
+    if st.button("Offloading 실행"):
+
+        async def run_demo():
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    "http://localhost:8005/v1/orchestrate", json={"prompt": user_input}
+                )
+                return res.json()
+
+        result = asyncio.run(run_demo())
+
+        if result:
+            plan = result.get("offloading_plan", [])
+            st.write(f"**총 {len(plan)}개의 에이전트 태스크가 생성되었습니다.**")
+
+            # 테이블로 시각화
+            plan_df = pd.DataFrame(plan)
+            st.table(
+                plan_df[["agent_type", "required_vram", "selected_model", "decision"]]
+            )
+
+            # 다이어그램 느낌의 시각화 (Expander 활용)
+            cols = st.columns(len(plan))
+            for i, p in enumerate(plan):
+                with cols[i]:
+                    st.success(f"Task: {p['agent_type']}")
+                    st.metric("VRAM", f"{p['required_vram']}GB")
+                    st.caption(f"📍 {p['selected_model']}")
+
+st.divider()
 
 if summary is not None and df is not None:
     # 상단 요약 지표 (KPI Cards)

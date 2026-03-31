@@ -88,6 +88,14 @@ class LLMModel(Base):
     cost_per_1k_prompt: Mapped[float] = mapped_column(default=0.0)
     cost_per_1k_completion: Mapped[float] = mapped_column(default=0.0)
 
+    # 하드웨어 사양 (멀티 에이전트 오프로딩용)
+    gpu_type: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # 예: "A100-80GB", "H100-80GB"
+    vram_total_gb: Mapped[float] = mapped_column(default=0.0)
+    vram_available_gb: Mapped[float] = mapped_column(default=0.0)
+    memory_bandwidth_gbps: Mapped[float] = mapped_column(default=0.0)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

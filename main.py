@@ -8,6 +8,12 @@ from logger import save_log_data
 from cache import get_cached_response, set_cached_response
 from registry import router as model_registry_router
 from stats import router as stats_router
+from orchestrator import decompose_task
+from offloader import run_orchestrated_offloading
+from database import get_db
+from sqlalchemy import select
+from models import LLMModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI()
 
@@ -79,6 +85,35 @@ async def secure_chat(
 
     # 6. 사용자에겐 즉시 리턴
     return {"proxy_success": True, "llm_response": llm_result, "cached": False}
+
+
+@app.post("/v1/orchestrate")
+async def multi_agent_orchestrate(
+    payload: dict = Body(...), db: AsyncSession = Depends(get_db)
+):
+    """
+    멀티 에이전트 오프로딩 엔드포인트:
+    복합 요청을 분해하고 각 에이전트를 최적의 하드웨어 노드로 배분합니다.
+    """
+    prompt = payload.get("prompt", "")
+
+    # 1. 작업 분해 (Orchestration)
+    orchestrated_req = await decompose_task(prompt)
+
+    # 2. 가용 모델(노드) 정보 조회
+    result = await db.execute(select(LLMModel).where(LLMModel.status == "prod"))
+    available_models = result.scalars().all()
+
+    # 3. 지능형 오프로딩 결정 (Offloading Decision)
+    offloading_results = await run_orchestrated_offloading(
+        orchestrated_req, available_models
+    )
+
+    return {
+        "original_prompt": prompt,
+        "task_count": len(orchestrated_req.sub_tasks),
+        "offloading_plan": offloading_results,
+    }
 
 
 if __name__ == "__main__":
