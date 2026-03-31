@@ -129,42 +129,54 @@ flowchart TB
 ### 1.4 전체 워크플로우 한눈에 보기
 
 ```mermaid
-flowchart LR
+flowchart TB
     Client["API Client"]
     Dashboard["Streamlit Dashboard"]
     Response["JSON Response"]
     Plan["Offloading Plan Response"]
-
-    subgraph Gateway["FastAPI Gateway"]
-        Chat["/v1/chat"]
-        AdminAPI["/admin/stats<br/>/admin/models"]
-        OrchAPI["/v1/orchestrate"]
-        Auth["auth.py<br/>API key check"]
-        Rate["rate_limit.py<br/>per-key limiter"]
-        Cache["cache.py<br/>response cache"]
-        Route["proxy.py + policy.py<br/>model selection and forwarding"]
-        Decompose["orchestrator.py<br/>task decomposition"]
-        Place["offloader.py<br/>node selection"]
-        Log["logger.py<br/>background logging"]
-    end
-
-    Redis[("Redis")]
-    Postgres[("PostgreSQL")]
     Provider["Registered LLM Endpoint"]
     Fallback["httpbin Fallback"]
+    Redis[("Redis")]
+    Postgres[("PostgreSQL")]
+
+    subgraph Gateway["FastAPI Gateway"]
+        direction TB
+
+        subgraph ChatFlow["Chat Request Path"]
+            direction TB
+            Chat["/v1/chat"]
+            Auth["auth.py<br/>API key check"]
+            Rate["rate_limit.py<br/>per-key limiter"]
+            Cache["cache.py<br/>response cache"]
+            Route["proxy.py + policy.py<br/>model selection and forwarding"]
+            Log["logger.py<br/>background logging"]
+        end
+
+        subgraph AdminFlow["Admin / Dashboard Path"]
+            direction TB
+            AdminAPI["/admin/stats<br/>/admin/models"]
+        end
+
+        subgraph OrchFlow["Orchestration Path"]
+            direction TB
+            OrchAPI["/v1/orchestrate"]
+            Decompose["orchestrator.py<br/>task decomposition"]
+            Place["offloader.py<br/>node selection"]
+        end
+    end
 
     Client -->|"POST /v1/chat<br/>x-api-key + payload"| Chat
-    Chat -->|"Depends(verify_api_key)"| Auth
+    Chat -->|"verify_api_key()"| Auth
     Auth -->|"SELECT ApiKey, Tenant"| Postgres
     Auth -->|"api_key"| Rate
-    Rate -->|"INCR rate_limit:{api_key}"| Redis
+    Rate -->|"INCR rate_limit key"| Redis
 
     Chat -->|"payload"| Cache
-    Cache -->|"GET/SET llm_cache:{sha256(payload)}"| Redis
+    Cache -->|"GET/SET cache key"| Redis
     Cache -->|"cached JSON"| Response
     Cache -->|"payload + tenant_name"| Route
 
-    Route -->|"routing policy + active models"| Postgres
+    Route -->|"routing policy + model rows"| Postgres
     Route -->|"POST JSON to endpoint_url"| Provider
     Route -.->|"upstream error"| Fallback
     Route -.->|"tenant, model, tokens,<br/>cost, latency"| Log
@@ -185,6 +197,7 @@ flowchart LR
 - 실선 화살표는 기본 처리 경로입니다.
 - 점선 화살표는 예외 경로 또는 비동기 처리입니다.
 - 화살표 라벨은 해당 구간에서 실제로 이동하는 핵심 데이터입니다.
+- GitHub에서는 가로로 긴 Mermaid가 강하게 축소되므로, 이 그림은 `TB` 기준으로 세로형으로 재배치했습니다.
 
 ---
 
