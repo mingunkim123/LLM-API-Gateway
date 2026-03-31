@@ -190,22 +190,22 @@ sequenceDiagram
     participant API as main.py<br/>multi_agent_orchestrate()
     participant Orch as orchestrator.py<br/>decompose_task()
     participant DB as PostgreSQL<br/>LLMModel(status='prod')
-    participant Off as offloader.py<br/>run_orchestrated_offloading()
+    participant NodeSel as offloader.py<br/>run_orchestrated_offloading()
 
     U->>API: POST /v1/orchestrate {prompt}
     API->>Orch: decompose_task(prompt)
     Orch-->>API: OrchestratedRequest(sub_tasks)
     API->>DB: SELECT LLMModel WHERE status='prod'
     DB-->>API: available_models
-    API->>Off: run_orchestrated_offloading(orchestrated_req, available_models)
+    API->>NodeSel: run_orchestrated_offloading(orchestrated_req, available_models)
 
     loop each sub task
-        Off->>Orch: estimate_resource_usage(task, model.name)
-        Off->>Off: compare vram_available_gb
-        Off->>Off: choose best-fit model
+        NodeSel->>Orch: estimate_resource_usage(task, model.name)
+        NodeSel->>NodeSel: compare vram_available_gb
+        NodeSel->>NodeSel: choose best-fit model
     end
 
-    Off-->>API: offloading_plan
+    NodeSel-->>API: offloading_plan
     API-->>U: original_prompt + task_count + offloading_plan
 ```
 
