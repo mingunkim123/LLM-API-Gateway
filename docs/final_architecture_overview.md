@@ -126,6 +126,61 @@ flowchart TB
 | `dashboard/app.py` | 통계 API 호출 및 오프로딩 데모 UI |
 | `dashboard/metrics.py` | 비용 추이, 모델 비중, 지연시간 분포 차트 렌더링 |
 
+### 1.4 전체 워크플로우 한눈에 보기
+
+```mermaid
+flowchart LR
+    Client["API Client"]
+    Dashboard["Streamlit Dashboard"]
+    Response["JSON Response"]
+    Plan["Offloading Plan Response"]
+
+    subgraph Gateway["FastAPI Gateway"]
+        Chat["/v1/chat"]
+        AdminAPI["/admin/stats<br/>/admin/models"]
+        OrchAPI["/v1/orchestrate"]
+        Auth["auth.py<br/>API key check"]
+        Rate["rate_limit.py<br/>per-key limiter"]
+        Cache["cache.py<br/>response cache"]
+        Route["proxy.py + policy.py<br/>model selection and forwarding"]
+        Decompose["orchestrator.py<br/>task decomposition"]
+        Place["offloader.py<br/>node selection"]
+        Log["logger.py<br/>background logging"]
+    end
+
+    Redis[("Redis")]
+    Postgres[("PostgreSQL")]
+    Provider["Registered LLM Endpoint"]
+    Fallback["httpbin Fallback"]
+
+    Client --> Chat
+    Chat --> Auth
+    Auth --> Postgres
+    Auth --> Rate
+    Rate --> Redis
+
+    Chat --> Cache
+    Cache --> Redis
+    Cache -->|cache hit| Response
+    Cache -->|cache miss| Route
+
+    Route --> Postgres
+    Route --> Provider
+    Route -.->|error fallback| Fallback
+    Route -.->|async log| Log
+    Log --> Postgres
+    Route --> Response
+
+    Dashboard --> AdminAPI
+    AdminAPI --> Postgres
+
+    Dashboard --> OrchAPI
+    OrchAPI --> Decompose
+    Decompose --> Place
+    Place --> Postgres
+    Place --> Plan
+```
+
 ---
 
 ## 2. 데이터 플로우 (Data Flow)
