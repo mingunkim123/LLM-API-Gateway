@@ -153,33 +153,38 @@ flowchart LR
     Provider["Registered LLM Endpoint"]
     Fallback["httpbin Fallback"]
 
-    Client --> Chat
-    Chat --> Auth
-    Auth --> Postgres
-    Auth --> Rate
-    Rate --> Redis
+    Client -->|"POST /v1/chat<br/>x-api-key + payload"| Chat
+    Chat -->|"Depends(verify_api_key)"| Auth
+    Auth -->|"SELECT ApiKey, Tenant"| Postgres
+    Auth -->|"api_key"| Rate
+    Rate -->|"INCR rate_limit:{api_key}"| Redis
 
-    Chat --> Cache
-    Cache --> Redis
-    Cache -->|cache hit| Response
-    Cache -->|cache miss| Route
+    Chat -->|"payload"| Cache
+    Cache -->|"GET/SET llm_cache:{sha256(payload)}"| Redis
+    Cache -->|"cached JSON"| Response
+    Cache -->|"payload + tenant_name"| Route
 
-    Route --> Postgres
-    Route --> Provider
-    Route -.->|error fallback| Fallback
-    Route -.->|async log| Log
-    Log --> Postgres
-    Route --> Response
+    Route -->|"routing policy + active models"| Postgres
+    Route -->|"POST JSON to endpoint_url"| Provider
+    Route -.->|"upstream error"| Fallback
+    Route -.->|"tenant, model, tokens,<br/>cost, latency"| Log
+    Log -->|"INSERT RequestLog"| Postgres
+    Route -->|"proxy_success + llm_response"| Response
 
-    Dashboard --> AdminAPI
-    AdminAPI --> Postgres
+    Dashboard -->|"GET /admin/stats/*<br/>GET/POST /admin/models*"| AdminAPI
+    AdminAPI -->|"summary, logs, model rows"| Postgres
 
-    Dashboard --> OrchAPI
-    OrchAPI --> Decompose
-    Decompose --> Place
-    Place --> Postgres
-    Place --> Plan
+    Dashboard -->|"POST /v1/orchestrate<br/>{prompt}"| OrchAPI
+    OrchAPI -->|"prompt"| Decompose
+    OrchAPI -->|"SELECT prod LLMModel rows"| Postgres
+    Decompose -->|"sub_tasks"| Place
+    Place -->|"task_count + offloading_plan"| Plan
 ```
+
+읽는 법:
+- 실선 화살표는 기본 처리 경로입니다.
+- 점선 화살표는 예외 경로 또는 비동기 처리입니다.
+- 화살표 라벨은 해당 구간에서 실제로 이동하는 핵심 데이터입니다.
 
 ---
 
