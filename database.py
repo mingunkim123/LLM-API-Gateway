@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 
 # PostgreSQL 접속 정보 (docker-compose.yml과 일치)
-DATABASE_URL = "postgresql+asyncpg://gateway:gateway1234@localhost:5432/llm_gateway"
+DATABASE_URL = "postgresql+asyncpg://gateway:gateway1234@localhost:5543/llm_gateway"
 
 # 1. 비동기 엔진 생성 — DB와의 커넥션 풀(Pool)을 관리하는 핵심 객체
 engine = create_async_engine(DATABASE_URL, echo=True)

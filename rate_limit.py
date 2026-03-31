@@ -3,7 +3,7 @@ import redis
 from fastapi import HTTPException
 
 # Redis 서버와 통신하는 뼈대 객체 파기
-r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+r = redis.Redis(host="localhost", port=16379, db=0, decode_responses=True)
 
 MAX_REQUESTS_PER_MINUTE = 3
 

@@ -37,3 +37,29 @@ class ApiKey(Base):
     # 이 키가 어떤 팀 소속인지 (N:1 관계)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"))
     tenant: Mapped["Tenant"] = relationship(back_populates="api_keys")
+
+
+class RequestLog(Base):
+    """요청 로그 테이블 — 누가 언제 어떤 모델을 호출했고 얼마나 썼는지 기록"""
+
+    __tablename__ = "request_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_name: Mapped[str] = mapped_column(String(100))  # 팀 이름
+    model_name: Mapped[str] = mapped_column(
+        String(100), default="unknown"
+    )  # 사용된 모델명
+
+    # 토큰 사용량 추적 (비용 정산의 핵심 데이터)
+    prompt_tokens: Mapped[int] = mapped_column(default=0)  # 입력 토큰 수
+    completion_tokens: Mapped[int] = mapped_column(default=0)  # 출력 토큰 수
+    total_tokens: Mapped[int] = mapped_column(default=0)  # 총 토큰 수
+    estimated_cost: Mapped[float] = mapped_column(default=0.0)  # 예상 비용 (USD)
+
+    # 성능 지표
+    latency_ms: Mapped[float] = mapped_column(default=0.0)  # 응답 지연시간 (ms)
+    status_code: Mapped[int] = mapped_column(default=200)  # HTTP 상태 코드
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
