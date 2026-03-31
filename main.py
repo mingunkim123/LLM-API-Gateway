@@ -7,11 +7,13 @@ from proxy import forward_to_llm
 from logger import save_log_data
 from cache import get_cached_response, set_cached_response
 from registry import router as model_registry_router
+from stats import router as stats_router
 
 app = FastAPI()
 
 # 0. 관리자용 라우터 연결
 app.include_router(model_registry_router)
+app.include_router(stats_router)
 
 
 # /health는 누구나 들어와야 하므로 인증 없음

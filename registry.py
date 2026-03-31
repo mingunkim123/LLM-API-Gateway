@@ -14,6 +14,7 @@ class ModelCreate(BaseModel):
     name: str
     provider: str
     endpoint_url: str
+    status: str = "dev"  # 기본값 'dev', 'prod'로 등록 가능
     cost_per_1k_prompt: float = 0.0
     cost_per_1k_completion: float = 0.0
 
