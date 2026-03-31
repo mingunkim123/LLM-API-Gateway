@@ -63,3 +63,31 @@ class RequestLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class LLMModel(Base):
+    """모델 레지스트리 — 시스템에 등록된 모든 LLM 모델의 메타데이터 관리"""
+
+    __tablename__ = "llm_models"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)  # 예: "gpt-4o"
+    provider: Mapped[str] = mapped_column(String(50))  # 예: "openai", "anthropic"
+    endpoint_url: Mapped[str] = mapped_column(String(255))
+    api_key_env: Mapped[str] = mapped_column(
+        String(100), nullable=True
+    )  # 환경변수명 (선택)
+
+    # 모델 상태: prod(운영), staging(검증), dev(개발/중지)
+    status: Mapped[str] = mapped_column(String(20), default="dev")
+
+    # 과금 모델 (1K 토큰당 가격)
+    cost_per_1k_prompt: Mapped[float] = mapped_column(default=0.0)
+    cost_per_1k_completion: Mapped[float] = mapped_column(default=0.0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
