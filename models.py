@@ -16,6 +16,9 @@ class Tenant(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # 기본 라우팅 정책: cost_optimal(비용), quality_first(성능), speed_optimal(속도)
+    routing_policy: Mapped[str] = mapped_column(String(50), default="cost_optimal")
+
     # 한 팀이 여러 API Key를 발급받을 수 있음 (1:N 관계)
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="tenant")
 

@@ -46,7 +46,7 @@ async def secure_chat(
         return {"proxy_success": True, "llm_response": cached_response, "cached": True}
 
     # 1. 캐시 미스(Miss) 시, 실제 프록시 요청 (도중에 에러 나면 알아서 Fallback탐)
-    llm_result = await forward_to_llm(payload)
+    llm_result = await forward_to_llm(payload, tenant_name)
 
     # 1.5. 새로 받아온 응답을 빠른 서빙을 위해 캐시에 저장 (Write)
     set_cached_response(payload, llm_result)
